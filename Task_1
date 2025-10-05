@@ -1,0 +1,123 @@
+# Load necessary libraries
+library(ggplot2)
+library(readr)
+library(dplyr)
+library(tidyr)
+install.packages("tidyverse")
+library(tidyverse)
+
+install.packages("GGally")
+library(GGally)
+install.packages("janitor")
+library(janitor)
+
+# Load dataset
+df <- read.csv("D:/fever_diagnosis_and_medicine.csv.csv", header = TRUE, sep = ",")
+
+# Clean column names to lowercase with underscores
+df <- janitor::clean_names(df)
+
+# Remove missing values
+df <- na.omit(df)
+
+# Convert relevant columns to numeric (if needed)
+df$age <- as.numeric(df$age)
+df$temperature <- as.numeric(df$temperature)
+df$heart_rate <- as.numeric(df$heart_rate)
+
+# Check structure and summary
+str(df)
+summary(df$diagnosis)
+summary(df$temperature)
+
+# Dynamically plot combined histogram for all numeric columns
+numeric_cols <- names(df)[sapply(df, is.numeric)]
+print("Numeric columns detected:")
+print(numeric_cols)
+
+# Reshape data to long format
+df_long <- df %>%
+  select(all_of(numeric_cols)) %>%
+  pivot_longer(cols = everything(), names_to = "variable", values_to = "value")
+
+# Combined histogram using facet_wrap
+combined_hist <- ggplot(df_long, aes(x = value)) +
+  geom_histogram(binwidth = 5, fill = "skyblue", color = "black") +
+  facet_wrap(~ variable, scales = "free") +
+  labs(title = "Combined Histograms of All Numeric Features", x = "Value", y = "Count") +
+  theme_minimal()
+
+print(combined_hist)
+
+
+
+# ✅ 2. Bar chart for heart_rate (if exists)
+cat_cols <- names(df)[sapply(df, function(x) is.character(x) || is.factor(x))]
+df_long_bar <- df %>%
+  select(all_of(cat_cols)) %>%
+  pivot_longer(cols = everything(), names_to = "variable", values_to = "value") %>%
+  filter(!is.na(value))
+
+p_bar <- ggplot(df_long_bar, aes(x = value)) +
+  geom_bar(fill = "orange", color = "black") +
+  facet_wrap(~ variable, scales = "free_x") +
+  labs(title = "Combined Bar Charts of Categorical Features", x = "Category", y = "Count") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+print(p_bar)
+
+# Step 1: Create a list of scatter plot pairs
+scatter_pairs <- list(
+  c("age", "recommended_medication"),
+  c("bmi", "recommended_medication"),
+  c("aqi", "recommended_medication"),
+  c("humidity", "recommended_medication"),
+  c("temperature", "recommended_medication"),
+  c("heart_rate", "recommended_medication")
+)
+# Step 1: Create a list of scatter plot pairs
+scatter_pairs <- list(
+  c("age", "temperature"),
+  c("bmi", "aqi"),
+  c("aqi", "heart_rate"),
+  c("humidity", "temperature")
+)
+
+# Step 2: Create an empty list to hold reshaped data
+scatter_data_list <- list()
+
+# Step 3: Loop through each pair and reshape
+for (pair in scatter_pairs) {
+  x_var <- pair[1]
+  y_var <- pair[2]
+  if (all(c(x_var, y_var) %in% colnames(df))) {
+    temp_df <- df[, c(x_var, y_var)]
+    colnames(temp_df) <- c("x", "y")  # rename for uniformity
+    temp_df$pair <- paste(x_var, "vs", y_var)  # label for facet
+    scatter_data_list[[length(scatter_data_list) + 1]] <- temp_df
+  }
+}
+
+# Step 4: Combine all reshaped pairs
+scatter_combined_df <- bind_rows(scatter_data_list)
+
+# Step 5: Plot using facet_wrap
+combined_scatter_plot <- ggplot(scatter_combined_df, aes(x = x, y = y)) +
+  geom_point(color = "blue", alpha = 0.6) +
+  facet_wrap(~ pair, scales = "free") +
+  labs(title = "Combined Scatter Plots", x = "X Value", y = "Y Value") +
+  theme_minimal()
+
+print(combined_scatter_plot)
+
+numeric_cols <- names(df)[sapply(df, is.numeric)]
+for (col in numeric_cols) {
+  if (col != "recommended_medication") {
+    print(
+      ggplot(df, aes_string(x = "recommended_medication", y = col, fill = "recommended_medication")) +
+        geom_violin(trim = FALSE) +
+        labs(title = paste("Violin Plot of", col, "by Recommended Medication")) +
+        theme(axis.text.x = element_text(angle = 45, hjust = 1))
+    )
+  }
+}
+
