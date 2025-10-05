@@ -1,0 +1,90 @@
+install.packages("FSelectorRcpp")
+install.packages("ggplot2")
+library(FSelectorRcpp)
+library(ggplot2)
+
+df <- read.csv("D:/fever_diagnosis_and_medicine.csv.csv", header = TRUE, sep = ",")
+
+df$Recommended_Medication <- as.factor(df$Recommended_Medication)
+numeric_cols <- sapply(df, is.numeric)
+categorical_cols <- sapply(df, is.character)
+
+cat("\n--- Pearson Correlation ---\n")
+pearson_vals <- sapply(names(df)[numeric_cols], function(col) {
+  val <- cor(df[[col]], as.numeric(df$Recommended_Medication), use = "complete.obs")
+  cat(sprintf("%s: %.4f\n", col, val))
+  return(val)
+})
+pearson_df <- data.frame(Feature = names(pearson_vals), Correlation = pearson_vals)
+ggplot(pearson_df, aes(x = reorder(Feature, Correlation), y = Correlation)) +
+  geom_bar(stat = "identity", fill = "skyblue") +
+  coord_flip() +
+  ggtitle("Pearson Correlation with Target") +
+  theme_minimal()
+
+
+cat("\n--- ANOVA (p-values) ---\n")
+anova_vals <- sapply(names(df)[numeric_cols], function(col) {
+  model <- aov(df[[col]] ~ df$Recommended_Medication)
+  p_val <- summary(model)[[1]][["Pr(>F)"]][1]
+  cat(sprintf("%s: p = %.6f\n", col, p_val))
+  return(p_val)
+})
+anova_df <- data.frame(Feature = names(anova_vals), P_Value = anova_vals)
+
+ggplot(anova_df, aes(x = reorder(Feature, -P_Value), y = -log10(P_Value))) +
+  geom_bar(stat = "identity", fill = "tomato") +
+  coord_flip() +
+  ggtitle("ANOVA -log10(P-Value)") +
+  ylab("-log10(p-value)") +
+  theme_minimal()
+
+cat("\n--- Chi-squared Test (p-values) ---\n")
+chi_vals <- sapply(names(df)[categorical_cols], function(col) {
+  tbl <- table(df[[col]], df$Recommended_Medication)
+  if (nrow(tbl) > 1 & ncol(tbl) > 1) {
+    p_val <- chisq.test(tbl)$p.value
+    cat(sprintf("%s: p = %.6f\n", col, p_val))
+    return(p_val)
+  } else {
+    cat(sprintf("%s: Skipped (not enough levels)\n", col))
+    return(NA)
+  }
+})
+chi_df <- data.frame(Feature = names(chi_vals), P_Value = chi_vals)
+chi_df <- na.omit(chi_df)  # Remove skipped ones
+# Chi-squared Plot
+ggplot(chi_df, aes(x = reorder(Feature, -P_Value), y = -log10(P_Value))) +
+  geom_bar(stat = "identity", fill = "orange") +
+  coord_flip() +
+  ggtitle("Chi-squared Test -log10(P-Value)") +
+  ylab("-log10(p-value)") +
+  theme_minimal()
+
+cat("\n--- Mutual Information (Information Gain) ---\n")
+df_factor <- as.data.frame(lapply(df, as.factor))
+mi_result <- information_gain(Recommended_Medication ~ ., data = df_factor)
+print(mi_result)
+mi_df <- data.frame(mi_result)
+ggplot(mi_df, aes(x = reorder(attributes, importance), y = importance)) +
+  geom_bar(stat = "identity", fill = "forestgreen") +
+  coord_flip() +
+  ggtitle("Mutual Information (Information Gain)") +
+  theme_minimal()
+
+cat("\n=== Combined Feature Evaluation Metrics ===\n")
+"\n---pearson_df$Feature <- as.character(pearson_df$Feature)---\n"
+"\n---anova_df$Feature <- as.character(anova_df$Feature)---\n"
+"\n---chi_df$Feature <- as.character(chi_df$Feature)---\n"
+colnames(mi_df) <- c("Feature", "Mutual_Information")
+mi_df$Feature <- as.character(mi_df$Feature)
+all_metrics <- Reduce(function(x, y) merge(x, y, by = "Feature", all = TRUE),
+                      list(pearson_df, anova_df, chi_df, mi_df))
+colnames(all_metrics) <- c("Feature", "Pearson_Correlation", "ANOVA_p_value", "Chi_squared_p_value", "Mutual_Information")
+
+all_metrics$Pearson_Correlation <- round(all_metrics$Pearson_Correlation, 4)
+all_metrics$ANOVA_p_value <- round(all_metrics$ANOVA_p_value, 6)
+all_metrics$Chi_squared_p_value <- round(all_metrics$Chi_squared_p_value, 6)
+all_metrics$Mutual_Information <- round(all_metrics$Mutual_Information, 4)
+print(all_metrics)
+
